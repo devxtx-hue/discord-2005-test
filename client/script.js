@@ -1,528 +1,604 @@
 class SimpleChat {
     constructor() {
         this.socket = null;
-        this.currentUser = null;
+        this.user = null;
         this.currentChat = null;
         this.friends = [];
-        this.messages = {};
+        this.voiceActive = false;
+        this.mediaStream = null;
+        this.audioContext = null;
+        this.isMicActive = false;
+        this.voiceRoom = null;
+        
         this.init();
     }
-
+    
     init() {
         this.bindEvents();
         this.checkAuth();
+        this.initResponsive();
     }
-
+    
     bindEvents() {
         // Аутентификация
-        document.getElementById('registerBtn')?.addEventListener('click', (e) => this.register(e));
-        document.getElementById('loginBtn')?.addEventListener('click', (e) => this.login(e));
-        
-        // Навигация
-        document.querySelectorAll('.nav-tab').forEach(tab => {
-            tab.addEventListener('click', (e) => this.switchTab(e.target.dataset.tab));
-        });
-        
-        // Чат
-        document.getElementById('sendMessageBtn')?.addEventListener('click', () => this.sendMessage());
-        document.getElementById('messageInput')?.addEventListener('keypress', (e) => {
+        document.getElementById('loginBtn').addEventListener('click', () => this.login());
+        document.getElementById('registerBtn').addEventListener('click', () => this.register());
+        document.getElementById('messageInput').addEventListener('keypress', (e) => {
             if (e.key === 'Enter') this.sendMessage();
         });
         
-        // Поиск друзей
-        document.getElementById('searchUserBtn')?.addEventListener('click', () => this.searchUser());
-        document.getElementById('searchFriend')?.addEventListener('input', (e) => this.filterFriends(e.target.value));
-        
         // Глобальные функции
-        window.showLogin = () => {
-            document.getElementById('registerForm').style.display = 'none';
-            document.getElementById('loginForm').style.display = 'block';
-        };
-        
         window.showRegister = () => {
             document.getElementById('loginForm').style.display = 'none';
             document.getElementById('registerForm').style.display = 'block';
+            document.getElementById('authError').textContent = '';
         };
+        
+        window.showLogin = () => {
+            document.getElementById('registerForm').style.display = 'none';
+            document.getElementById('loginForm').style.display = 'block';
+            document.getElementById('regError').textContent = '';
+        };
+        
+        window.toggleSidebar = () => {
+            document.getElementById('sidebar').classList.toggle('active');
+        };
+        
+        window.switchTab = (tab) => {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.getElementById('friendsTab').style.display = 'none';
+            document.getElementById('addTab').style.display = 'none';
+            
+            if (tab === 'friends') {
+                document.querySelector('.tab:nth-child(1)').classList.add('active');
+                document.getElementById('friendsTab').style.display = 'block';
+            } else {
+                document.querySelector('.tab:nth-child(2)').classList.add('active');
+                document.getElementById('addTab').style.display = 'block';
+            }
+        };
+        
+        window.showAvatarModal = () => {
+            document.getElementById('avatarModal').classList.add('show');
+            document.getElementById('avatarUrl').value = this.user.avatar;
+        };
+        
+        window.hideAvatarModal = () => {
+            document.getElementById('avatarModal').classList.remove('show');
+        };
+        
+        window.updateAvatar = () => {
+            const url = document.getElementById('avatarUrl').value.trim();
+            if (!url) {
+                this.showError('Введите URL аватара');
+                return;
+            }
+            
+            fetch('/api/user/update', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({userId: this.user.id, avatar: url})
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    this.user.avatar = data.avatar;
+                    localStorage.setItem('user', JSON.stringify(this.user));
+                    document.getElementById('userAvatar').src = data.avatar;
+                    if (this.currentChat) {
+                        document.getElementById('chatAvatar').src = data.avatar;
+                    }
+                    this.showNotification('Аватар обновлен');
+                    hideAvatarModal();
+                } else {
+                    this.showError(data.error);
+                }
+            })
+            .catch(() => this.showError('Ошибка обновления'));
+        };
+        
+        window.findUser = () => {
+            const username = document.getElementById('searchUserInput').value.trim();
+            if (!username) {
+                this.showError('Введите имя пользователя');
+                return;
+            }
+            
+            fetch('/api/user/find', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    username: username,
+                    currentUserId: this.user.id
+                })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.error) {
+                    this.showError(data.error);
+                    return;
+                }
+                
+                const results = document.getElementById('searchResults');
+                results.innerHTML = `
+                    <div class="user-result">
+                        <img src="${data.avatar}" class="friend-avatar">
+                        <div>
+                            <div style="font-weight: bold;">${data.username}</div>
+                            <div style="font-size: 12px; color: #a0aec0;">ID: ${data.id}</div>
+                        </div>
+                        <button class="add-friend" onclick="app.addFriend('${data.id}')">
+                            <i class="fas fa-user-plus"></i> Добавить
+                        </button>
+                    </div>
+                `;
+            })
+            .catch(() => this.showError('Ошибка поиска'));
+        };
+        
+        window.searchFriends = () => {
+            const search = document.getElementById('searchFriends').value.toLowerCase();
+            const friends = document.querySelectorAll('.friend');
+            friends.forEach(friend => {
+                const name = friend.querySelector('.friend-name').textContent.toLowerCase();
+                friend.style.display = name.includes(search) ? 'flex' : 'none';
+            });
+        };
+        
+        window.toggleVoiceChat = () => {
+            if (!this.currentChat) {
+                this.showError('Выберите чат для войса');
+                return;
+            }
+            
+            if (!this.voiceActive) {
+                this.joinVoiceChat();
+            } else {
+                this.leaveVoiceChat();
+            }
+        };
+        
+        window.toggleMicrophone = () => {
+            if (this.mediaStream) {
+                const audioTracks = this.mediaStream.getAudioTracks();
+                audioTracks.forEach(track => {
+                    track.enabled = !track.enabled;
+                });
+                this.isMicActive = !this.isMicActive;
+                document.getElementById('micBtn').innerHTML = 
+                    this.isMicActive ? 
+                    '<i class="fas fa-microphone-slash"></i> Выключить микрофон' :
+                    '<i class="fas fa-microphone"></i> Включить микрофон';
+                document.getElementById('micBtn').classList.toggle('active', this.isMicActive);
+            }
+        };
+        
+        window.leaveVoiceChat = () => {
+            this.leaveVoiceChat();
+        };
+        
+        // Делаем методы глобальными
+        window.app = this;
     }
-
-    async register(e) {
-        e.preventDefault();
+    
+    initResponsive() {
+        window.addEventListener('resize', () => {
+            if (window.innerWidth > 768) {
+                document.getElementById('sidebar').style.display = 'block';
+            } else {
+                document.getElementById('sidebar').style.display = 'none';
+            }
+        });
+    }
+    
+    async login() {
+        const username = document.getElementById('loginUsername').value.trim();
+        const password = document.getElementById('loginPassword').value;
+        
+        if (!username || !password) {
+            this.showAuthError('Заполните все поля');
+            return;
+        }
+        
+        try {
+            const res = await fetch('/api/login', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({username, password})
+            });
+            
+            const data = await res.json();
+            
+            if (data.success) {
+                this.user = data.user;
+                localStorage.setItem('user', JSON.stringify(data.user));
+                this.showMainApp();
+                this.connectSocket();
+                this.loadFriends();
+            } else {
+                this.showAuthError(data.error);
+            }
+        } catch {
+            this.showAuthError('Ошибка соединения');
+        }
+    }
+    
+    async register() {
         const username = document.getElementById('regUsername').value.trim();
         const password = document.getElementById('regPassword').value;
         
         if (!username || !password) {
-            this.showNotification('Заполните все поля', 'error');
+            this.showRegError('Заполните все поля');
+            return;
+        }
+        
+        if (username.length < 3) {
+            this.showRegError('Имя слишком короткое');
             return;
         }
         
         try {
-            const response = await fetch('/api/register', {
+            const res = await fetch('/api/register', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username, password })
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({username, password})
             });
             
-            const data = await response.json();
+            const data = await res.json();
             
-            if (response.ok) {
-                this.currentUser = data.user;
-                localStorage.setItem('simplechat_user', JSON.stringify(data.user));
-                this.showMainInterface();
-                this.connectSocket();
-            } else {
-                this.showNotification(data.error, 'error');
-            }
-        } catch (error) {
-            this.showNotification('Ошибка соединения', 'error');
-        }
-    }
-
-    async login(e) {
-        e.preventDefault();
-        const username = document.getElementById('loginUsername').value.trim();
-        const password = document.getElementById('loginPassword').value;
-        
-        try {
-            const response = await fetch('/api/login', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username, password })
-            });
-            
-            const data = await response.json();
-            
-            if (response.ok) {
-                this.currentUser = data.user;
-                localStorage.setItem('simplechat_user', JSON.stringify(data.user));
-                this.showMainInterface();
+            if (data.success) {
+                this.user = data.user;
+                localStorage.setItem('user', JSON.stringify(data.user));
+                this.showMainApp();
                 this.connectSocket();
                 this.loadFriends();
-                this.loadFriendRequests();
             } else {
-                this.showNotification(data.error, 'error');
+                this.showRegError(data.error);
             }
-        } catch (error) {
-            this.showNotification('Ошибка соединения', 'error');
+        } catch {
+            this.showRegError('Ошибка соединения');
         }
     }
-
+    
+    showAuthError(msg) {
+        document.getElementById('authError').textContent = msg;
+    }
+    
+    showRegError(msg) {
+        document.getElementById('regError').textContent = msg;
+    }
+    
     checkAuth() {
-        const savedUser = localStorage.getItem('simplechat_user');
-        if (savedUser) {
-            this.currentUser = JSON.parse(savedUser);
-            this.showMainInterface();
+        const saved = localStorage.getItem('user');
+        if (saved) {
+            this.user = JSON.parse(saved);
+            this.showMainApp();
             this.connectSocket();
             this.loadFriends();
-            this.loadFriendRequests();
         }
     }
-
-    showMainInterface() {
-        document.getElementById('authContainer').style.display = 'none';
-        document.getElementById('mainContainer').style.display = 'flex';
+    
+    showMainApp() {
+        document.getElementById('authScreen').style.display = 'none';
+        document.getElementById('mainApp').style.display = 'block';
         
-        // Обновляем информацию о пользователе
-        document.getElementById('userUsername').textContent = this.currentUser.username;
-        document.getElementById('userId').textContent = `ID: ${this.currentUser.id}`;
-        document.getElementById('userAvatar').src = this.currentUser.avatar;
+        // Обновляем информацию пользователя
+        document.getElementById('userName').textContent = this.user.username;
+        document.getElementById('userId').textContent = `ID: ${this.user.id}`;
+        document.getElementById('userAvatar').src = this.user.avatar;
+        
+        // Адаптивность
+        if (window.innerWidth <= 768) {
+            document.getElementById('sidebar').style.display = 'none';
+        }
     }
-
+    
     connectSocket() {
         this.socket = io();
         
         this.socket.on('connect', () => {
-            this.socket.emit('user_join', this.currentUser);
-            this.showNotification('Подключено к серверу', 'success');
+            this.socket.emit('user_join', this.user);
+            this.showNotification('Подключено к серверу');
         });
         
-        this.socket.on('new_message', (message) => {
-            if (this.currentChat === message.senderId) {
-                this.addMessageToChat(message);
-                this.markMessagesAsRead(message.senderId);
+        this.socket.on('new_message', (msg) => {
+            if (this.currentChat === msg.fromId) {
+                this.addMessage(msg);
             } else {
-                // Показать уведомление о новом сообщении
-                this.showNotification(`Новое сообщение от ${message.senderUsername}`, 'info');
+                this.showNotification(`Новое сообщение от ${msg.fromName}`);
             }
         });
         
-        this.socket.on('message_sent', (message) => {
-            this.addMessageToChat(message);
+        this.socket.on('message_sent', (msg) => {
+            this.addMessage(msg);
         });
         
-        this.socket.on('friend_request', (data) => {
-            this.showNotification(`Новый запрос в друзья от ${data.fromUsername}`, 'info');
-            this.loadFriendRequests();
+        this.socket.on('user_online', (data) => {
+            this.updateFriendStatus(data.userId, data.online);
         });
         
-        this.socket.on('friend_accepted', (data) => {
-            this.showNotification(`${data.username} принял(а) ваш запрос в друзья`, 'success');
-            this.loadFriends();
+        this.socket.on('user_joined_voice', (data) => {
+            this.addVoiceUser(data.userId);
         });
         
-        this.socket.on('user_status_change', (data) => {
-            this.updateFriendStatus(data.userId, data.isOnline);
+        this.socket.on('user_left_voice', (data) => {
+            this.removeVoiceUser(data.userId);
+        });
+        
+        this.socket.on('voice_stream', (data) => {
+            this.playAudio(data.audioData);
         });
     }
-
+    
     async loadFriends() {
         try {
-            const response = await fetch(`/api/friends/${this.currentUser.id}`);
-            const friends = await response.json();
-            this.friends = friends;
-            this.renderFriendsList();
-        } catch (error) {
-            console.error('Ошибка загрузки друзей:', error);
+            const res = await fetch(`/api/friends/${this.user.id}`);
+            this.friends = await res.json();
+            this.renderFriends();
+        } catch {
+            this.showError('Ошибка загрузки друзей');
         }
     }
-
-    renderFriendsList() {
-        const list = document.getElementById('friendsList');
-        list.innerHTML = '';
+    
+    renderFriends() {
+        const container = document.getElementById('friendsContainer');
+        container.innerHTML = '';
+        
+        if (this.friends.length === 0) {
+            container.innerHTML = '<div style="text-align: center; padding: 20px; color: #a0aec0;">Друзей нет</div>';
+            return;
+        }
         
         this.friends.forEach(friend => {
-            const li = document.createElement('li');
-            li.className = 'friend-item';
+            const div = document.createElement('div');
+            div.className = 'friend';
             if (this.currentChat === friend.id) {
-                li.classList.add('active');
+                div.classList.add('active');
             }
             
-            li.innerHTML = `
-                <img src="${friend.avatar}" class="friend-avatar" alt="${friend.username}">
-                <div class="friend-details">
+            div.innerHTML = `
+                <img src="${friend.avatar}" class="friend-avatar">
+                <div class="friend-info">
                     <div class="friend-name">
                         ${friend.username}
-                        <div class="${friend.isOnline ? 'online-dot' : 'offline-dot'}"></div>
+                        <span class="status ${friend.isOnline ? 'online' : 'offline'}"></span>
                     </div>
-                    <div class="last-message">Нажмите, чтобы написать</div>
+                    <div class="last-msg">Нажмите для чата</div>
                 </div>
             `;
             
-            li.addEventListener('click', () => this.openChat(friend));
-            list.appendChild(li);
+            div.onclick = () => this.openChat(friend);
+            container.appendChild(div);
         });
     }
-
+    
     async openChat(friend) {
         this.currentChat = friend.id;
-        this.renderFriendsList(); // Обновляем активный чат
+        this.renderFriends(); // Обновляем активный чат
         
         // Показываем интерфейс чата
         document.getElementById('emptyChat').style.display = 'none';
         document.getElementById('chatContainer').style.display = 'flex';
+        document.getElementById('chatHeader').style.display = 'flex';
+        document.getElementById('voiceBtn').style.display = 'block';
         
-        // Обновляем информацию в заголовке чата
+        // Обновляем информацию чата
         document.getElementById('chatFriendName').textContent = friend.username;
-        document.getElementById('chatFriendAvatar').src = friend.avatar;
-        document.getElementById('chatFriendStatus').textContent = friend.isOnline ? 'Онлайн' : 'Офлайн';
-        document.getElementById('chatFriendStatus').style.color = friend.isOnline ? '#2ecc71' : '#95a5a6';
+        document.getElementById('chatAvatar').src = friend.avatar;
+        document.getElementById('chatStatus').className = `status ${friend.isOnline ? 'online' : 'offline'}`;
         
         // Загружаем историю сообщений
-        await this.loadChatHistory(friend.id);
+        await this.loadMessages(friend.id);
         
-        // Помечаем сообщения как прочитанные
-        this.markMessagesAsRead(friend.id);
-        
-        // Фокусируемся на поле ввода
+        // Фокус на поле ввода
         document.getElementById('messageInput').focus();
-    }
-
-    async loadChatHistory(friendId) {
-        try {
-            const response = await fetch(`/api/messages/${this.currentUser.id}/${friendId}`);
-            const messages = await response.json();
-            this.messages[friendId] = messages;
-            this.renderChatMessages(messages);
-        } catch (error) {
-            console.error('Ошибка загрузки истории:', error);
+        
+        // Закрываем боковую панель на мобилке
+        if (window.innerWidth <= 768) {
+            document.getElementById('sidebar').classList.remove('active');
         }
     }
-
-    renderChatMessages(messages) {
-        const container = document.getElementById('chatMessages');
-        container.innerHTML = '';
-        
-        messages.forEach(message => {
-            const isSent = message.senderId === this.currentUser.id;
-            const messageDiv = document.createElement('div');
-            messageDiv.className = `message ${isSent ? 'sent' : 'received'}`;
+    
+    async loadMessages(friendId) {
+        try {
+            const res = await fetch(`/api/messages/${this.user.id}/${friendId}`);
+            const messages = await res.json();
             
-            const time = new Date(message.timestamp).toLocaleTimeString([], { 
-                hour: '2-digit', 
-                minute: '2-digit' 
+            const container = document.getElementById('messages');
+            container.innerHTML = '';
+            
+            messages.forEach(msg => {
+                this.addMessage(msg);
             });
             
-            messageDiv.innerHTML = `
-                <div class="message-info">
-                    <span>${isSent ? 'Вы' : message.senderUsername}</span>
-                    <span class="message-time">${time}</span>
-                </div>
-                <div class="message-content">${message.message}</div>
-            `;
-            
-            container.appendChild(messageDiv);
-        });
+            // Прокрутка вниз
+            container.scrollTop = container.scrollHeight;
+        } catch {
+            this.showError('Ошибка загрузки сообщений');
+        }
+    }
+    
+    addMessage(msg) {
+        const container = document.getElementById('messages');
+        const isMe = msg.fromId === this.user.id;
         
-        // Прокручиваем вниз
+        const div = document.createElement('div');
+        div.className = `message ${isMe ? 'sent' : 'received'}`;
+        
+        const time = new Date(msg.time).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
+        
+        div.innerHTML = `
+            <div class="msg-content">${msg.text}</div>
+            <div class="msg-info">${time} • ${isMe ? 'Вы' : msg.fromName}</div>
+        `;
+        
+        container.appendChild(div);
         container.scrollTop = container.scrollHeight;
     }
-
+    
     async sendMessage() {
         const input = document.getElementById('messageInput');
-        const message = input.value.trim();
+        const text = input.value.trim();
         
-        if (!message || !this.currentChat) return;
+        if (!text || !this.currentChat) return;
         
         this.socket.emit('send_message', {
-            receiverId: this.currentChat,
-            message: message
+            toId: this.currentChat,
+            text: text
         });
         
         input.value = '';
     }
-
-    addMessageToChat(message) {
-        if (!this.messages[this.currentChat]) {
-            this.messages[this.currentChat] = [];
-        }
-        
-        this.messages[this.currentChat].push(message);
-        
-        // Если это текущий чат - отображаем сообщение
-        if (this.currentChat === message.senderId || 
-            (this.currentChat === message.receiverId && message.senderId === this.currentUser.id)) {
-            this.renderChatMessages(this.messages[this.currentChat]);
-        }
-    }
-
-    async markMessagesAsRead(friendId) {
-        if (this.socket) {
-            this.socket.emit('mark_as_read', {
-                senderId: friendId,
-                receiverId: this.currentUser.id
-            });
-        }
-    }
-
-    updateFriendStatus(userId, isOnline) {
-        const friendIndex = this.friends.findIndex(f => f.id === userId);
-        if (friendIndex !== -1) {
-            this.friends[friendIndex].isOnline = isOnline;
-            this.renderFriendsList();
-            
-            // Если это текущий чат - обновляем статус
-            if (this.currentChat === userId) {
-                document.getElementById('chatFriendStatus').textContent = isOnline ? 'Онлайн' : 'Офлайн';
-                document.getElementById('chatFriendStatus').style.color = isOnline ? '#2ecc71' : '#95a5a6';
-            }
-        }
-    }
-
-    switchTab(tabName) {
-        // Обновляем активную вкладку
-        document.querySelectorAll('.nav-tab').forEach(tab => {
-            tab.classList.toggle('active', tab.dataset.tab === tabName);
-        });
-        
-        // Показываем соответствующую панель
-        document.getElementById('friendsPanel').style.display = tabName === 'friends' ? 'block' : 'none';
-        document.getElementById('addFriendPanel').style.display = tabName === 'add-friend' ? 'block' : 'none';
-        document.getElementById('requestsPanel').style.display = tabName === 'requests' ? 'block' : 'none';
-    }
-
-    async searchUser() {
-        const username = document.getElementById('searchUsername').value.trim();
-        if (!username) return;
-        
+    
+    async addFriend(friendId) {
         try {
-            const response = await fetch('/api/user/search', {
+            const res = await fetch('/api/friends/add', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    username, 
-                    currentUserId: this.currentUser.id 
-                })
-            });
-            
-            const data = await response.json();
-            
-            if (response.ok) {
-                const resultsDiv = document.getElementById('searchResults');
-                resultsDiv.innerHTML = `
-                    <div class="search-result">
-                        <img src="${data.avatar}" class="avatar" alt="${data.username}">
-                        <div class="result-details">
-                            <div style="font-weight: bold;">${data.username}</div>
-                            <div style="font-size: 12px; color: #666;">ID: ${data.id}</div>
-                        </div>
-                        <button class="add-friend-btn" onclick="app.sendFriendRequest('${data.id}')">
-                            Добавить в друзья
-                        </button>
-                    </div>
-                `;
-            } else {
-                this.showNotification(data.error, 'error');
-            }
-        } catch (error) {
-            this.showNotification('Ошибка поиска', 'error');
-        }
-    }
-
-    async sendFriendRequest(userId) {
-        try {
-            const response = await fetch('/api/friend/request', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({
-                    fromUserId: this.currentUser.id,
-                    toUserId: userId
+                    userId1: this.user.id,
+                    userId2: friendId
                 })
             });
             
-            if (response.ok) {
-                this.showNotification('Запрос отправлен', 'success');
+            const data = await res.json();
+            
+            if (data.success) {
+                this.showNotification('Друг добавлен');
+                this.loadFriends();
                 document.getElementById('searchResults').innerHTML = '';
-                document.getElementById('searchUsername').value = '';
+                document.getElementById('searchUserInput').value = '';
             } else {
-                const data = await response.json();
-                this.showNotification(data.error, 'error');
+                this.showError(data.error);
             }
-        } catch (error) {
-            this.showNotification('Ошибка отправки запроса', 'error');
+        } catch {
+            this.showError('Ошибка добавления друга');
         }
     }
-
-    async loadFriendRequests() {
-        try {
-            const response = await fetch(`/api/friend/requests/${this.currentUser.id}`);
-            const requests = await response.json();
-            this.renderFriendRequests(requests);
-        } catch (error) {
-            console.error('Ошибка загрузки запросов:', error);
-        }
-    }
-
-    renderFriendRequests(requests) {
-        const container = document.getElementById('friendRequests');
-        container.innerHTML = '';
-        
-        if (requests.length === 0) {
-            container.innerHTML = '<div style="padding: 20px; text-align: center; color: #666;">Запросов нет</div>';
-            return;
-        }
-        
-        requests.forEach(request => {
-            const requestDiv = document.createElement('div');
-            requestDiv.className = 'request-item';
+    
+    updateFriendStatus(userId, isOnline) {
+        const friend = this.friends.find(f => f.id === userId);
+        if (friend) {
+            friend.isOnline = isOnline;
+            this.renderFriends();
             
-            requestDiv.innerHTML = `
-                <img src="${request.fromAvatar}" class="avatar" alt="${request.fromUsername}">
-                <div style="flex: 1;">
-                    <div style="font-weight: bold;">${request.fromUsername}</div>
-                    <div style="font-size: 12px; color: #666;">
-                        ${new Date(request.createdAt).toLocaleDateString()}
-                    </div>
-                    <div class="request-actions">
-                        <button class="accept-btn" onclick="app.respondToRequest('${request.id}', 'accept')">
-                            Принять
-                        </button>
-                        <button class="reject-btn" onclick="app.respondToRequest('${request.id}', 'reject')">
-                            Отклонить
-                        </button>
-                    </div>
-                </div>
-            `;
-            
-            container.appendChild(requestDiv);
-        });
+            if (this.currentChat === userId) {
+                document.getElementById('chatStatus').className = `status ${isOnline ? 'online' : 'offline'}`;
+            }
+        }
     }
-
-    async respondToRequest(requestId, action) {
+    
+    async joinVoiceChat() {
         try {
-            const response = await fetch('/api/friend/respond', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ requestId, action })
+            // Запрашиваем доступ к микрофону
+            this.mediaStream = await navigator.mediaDevices.getUserMedia({
+                audio: true,
+                video: false
             });
             
-            if (response.ok) {
-                if (action === 'accept') {
-                    this.showNotification('Запрос принят', 'success');
-                    this.loadFriends();
-                } else {
-                    this.showNotification('Запрос отклонен', 'info');
-                }
-                this.loadFriendRequests();
-            }
-        } catch (error) {
-            this.showNotification('Ошибка обработки запроса', 'error');
-        }
-    }
-
-    filterFriends(searchText) {
-        const friends = document.querySelectorAll('.friend-item');
-        friends.forEach(friend => {
-            const name = friend.querySelector('.friend-name').textContent.toLowerCase();
-            friend.style.display = name.includes(searchText.toLowerCase()) ? 'flex' : 'none';
-        });
-    }
-
-    async updateAvatar() {
-        const url = document.getElementById('avatarUrl').value.trim();
-        if (!url) return;
-        
-        try {
-            const response = await fetch('/api/user/avatar', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    userId: this.currentUser.id,
-                    avatarUrl: url
-                })
+            this.isMicActive = true;
+            this.voiceRoom = `voice_${this.user.id}_${this.currentChat}`;
+            
+            // Входим в комнату
+            this.socket.emit('join_voice', {
+                roomId: this.voiceRoom,
+                userId: this.user.id
             });
             
-            if (response.ok) {
-                this.currentUser.avatar = url;
-                localStorage.setItem('simplechat_user', JSON.stringify(this.currentUser));
-                
-                // Обновляем аватар везде
-                document.getElementById('userAvatar').src = url;
-                if (this.currentChat) {
-                    document.getElementById('chatFriendAvatar').src = url;
-                }
-                
-                this.showNotification('Аватар обновлен', 'success');
-                this.hideAvatarModal();
-            }
+            this.voiceActive = true;
+            document.getElementById('voiceBtn').classList.add('active');
+            document.getElementById('voiceBtn').innerHTML = '<i class="fas fa-phone-slash"></i> Выйти из войса';
+            document.getElementById('voiceChat').classList.add('active');
+            
+            // Обновляем список пользователей
+            this.updateVoiceUsers();
+            
+            // Начинаем передачу аудио
+            this.startAudioStreaming();
+            
+            this.showNotification('Войс чат подключен');
+            
         } catch (error) {
-            this.showNotification('Ошибка обновления аватара', 'error');
+            this.showError('Ошибка доступа к микрофону');
+            console.error('Voice error:', error);
         }
     }
-
-    showAvatarModal() {
-        document.getElementById('avatarModal').classList.add('active');
-        document.getElementById('avatarUrl').value = this.currentUser.avatar;
-    }
-
-    hideAvatarModal() {
-        document.getElementById('avatarModal').classList.remove('active');
-    }
-
-    showNotification(message, type = 'info') {
-        const notification = document.createElement('div');
-        notification.className = `notification ${type}`;
-        notification.textContent = message;
+    
+    async leaveVoiceChat() {
+        if (this.mediaStream) {
+            this.mediaStream.getTracks().forEach(track => track.stop());
+            this.mediaStream = null;
+        }
         
-        document.body.appendChild(notification);
+        if (this.voiceActive) {
+            this.socket.emit('leave_voice', {
+                roomId: this.voiceRoom,
+                userId: this.user.id
+            });
+        }
+        
+        this.voiceActive = false;
+        this.voiceRoom = null;
+        this.isMicActive = false;
+        
+        document.getElementById('voiceBtn').classList.remove('active');
+        document.getElementById('voiceBtn').innerHTML = '<i class="fas fa-phone"></i> Войс чат';
+        document.getElementById('voiceChat').classList.remove('active');
+        document.getElementById('micBtn').innerHTML = '<i class="fas fa-microphone"></i> Включить микрофон';
+        document.getElementById('micBtn').classList.remove('active');
+        document.getElementById('voiceUsers').innerHTML = '';
+    }
+    
+    startAudioStreaming() {
+        // Здесь будет код для захвата и передачи аудио
+        // Для простоты оставляем базовую структуру
+        console.log('Audio streaming started');
+    }
+    
+    playAudio(audioData) {
+        // Воспроизведение полученного аудио
+        // Базовый пример для демонстрации
+    }
+    
+    updateVoiceUsers() {
+        const container = document.getElementById('voiceUsers');
+        // Здесь будет обновление списка пользователей в войсе
+        container.innerHTML = `
+            <div class="voice-user">
+                <span class="status online"></span>
+                <span>${this.user.username} (Вы)</span>
+            </div>
+        `;
+    }
+    
+    addVoiceUser(userId) {
+        const container = document.getElementById('voiceUsers');
+        // Добавление пользователя в список войса
+    }
+    
+    removeVoiceUser(userId) {
+        // Удаление пользователя из списка войса
+    }
+    
+    showNotification(message) {
+        const div = document.createElement('div');
+        div.className = 'notification';
+        div.textContent = message;
+        
+        document.body.appendChild(div);
         
         setTimeout(() => {
-            notification.remove();
+            div.remove();
         }, 3000);
+    }
+    
+    showError(message) {
+        this.showNotification(message);
     }
 }
 
-// Инициализация приложения
+// Запуск приложения
 let app;
 document.addEventListener('DOMContentLoaded', () => {
     app = new SimpleChat();
-    window.app = app; // Делаем глобальным для обработчиков
 });
