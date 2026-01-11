@@ -1,17 +1,14 @@
 {
-  "name": "discord-2005",
+  "name": "simplechat-2008",
   "version": "1.0.0",
-  "description": "Простой аналог Discord в стиле 2005-2010",
+  "description": "Простой чат в стиле 2008 с друзьями и сохранением сообщений",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js",
-    "dev": "nodemon index.js"
+    "start": "node index.js"
   },
   "dependencies": {
     "express": "^4.18.2",
-    "socket.io": "^4.7.2"
-  },
-  "devDependencies": {
-    "nodemon": "^3.0.1"
+    "socket.io": "^4.7.2",
+    "crypto": "^1.0.1"
   }
 }
