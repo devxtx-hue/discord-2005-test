@@ -3,94 +3,116 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Discord 2005</title>
+    <title>SimpleChat 2008</title>
     <link rel="stylesheet" href="style.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
 <body>
-    <div class="container">
-        <!-- Формы аутентификации -->
-        <div id="authContainer">
-            <div class="auth-form" id="registerForm">
-                <h2><i class="fas fa-user-plus"></i> Регистрация</h2>
-                <input type="text" id="regUsername" placeholder="Имя пользователя" required>
-                <input type="password" id="regPassword" placeholder="Пароль" required>
-                <button id="registerBtn">Зарегистрироваться</button>
-                <p style="text-align: center; margin-top: 15px; color: #3498db;">
-                    Уже есть аккаунт? <a href="#" onclick="showLogin()" style="color: #1abc9c;">Войти</a>
-                </p>
-            </div>
-
-            <div class="auth-form" id="loginForm" style="display: none;">
-                <h2><i class="fas fa-sign-in-alt"></i> Вход</h2>
-                <input type="text" id="loginUsername" placeholder="Имя пользователя" required>
-                <input type="password" id="loginPassword" placeholder="Пароль" required>
-                <button id="loginBtn">Войти</button>
-                <p style="text-align: center; margin-top: 15px; color: #3498db;">
-                    Нет аккаунта? <a href="#" onclick="showRegister()" style="color: #1abc9c;">Зарегистрироваться</a>
-                </p>
+    <!-- Формы аутентификации -->
+    <div id="authContainer" class="auth-container">
+        <div class="auth-box" id="registerForm">
+            <h2>Регистрация</h2>
+            <input type="text" id="regUsername" placeholder="Имя пользователя" maxlength="20">
+            <input type="password" id="regPassword" placeholder="Пароль">
+            <button id="registerBtn">Создать аккаунт</button>
+            <div class="auth-switch">
+                Уже есть аккаунт? <a onclick="showLogin()">Войти</a>
             </div>
         </div>
+        
+        <div class="auth-box" id="loginForm" style="display: none;">
+            <h2>Вход</h2>
+            <input type="text" id="loginUsername" placeholder="Имя пользователя">
+            <input type="password" id="loginPassword" placeholder="Пароль">
+            <button id="loginBtn">Войти</button>
+            <div class="auth-switch">
+                Нет аккаунта? <a onclick="showRegister()">Зарегистрироваться</a>
+            </div>
+        </div>
+    </div>
 
-        <!-- Основной интерфейс чата -->
-        <div id="chatContainer" class="chat-container">
-            <div class="chat-header" id="chatHeader">
-                Discord 2005
+    <!-- Основной интерфейс -->
+    <div id="mainContainer" class="container" style="display: none;">
+        <!-- Левая панель -->
+        <div class="sidebar">
+            <div class="user-info">
+                <img id="userAvatar" class="avatar" src="" alt="Avatar">
+                <div class="user-details">
+                    <div id="userUsername" class="username"></div>
+                    <div id="userId" class="user-id"></div>
+                </div>
+                <button class="avatar-btn" onclick="showAvatarModal()">Сменить аватар</button>
             </div>
             
-            <div class="chat-layout">
-                <!-- Панель пользователей -->
-                <div class="users-panel">
-                    <h3><i class="fas fa-users"></i> Онлайн (<span id="onlineCount">0</span>)</h3>
-                    <div style="margin-bottom: 15px;">
-                        <button id="publicChatBtn" style="width: 100%; padding: 8px; margin-bottom: 10px;">
-                            <i class="fas fa-comments"></i> Общий чат
-                        </button>
-                        <button id="logoutBtn" style="width: 100%; padding: 8px; background: #e74c3c;">
-                            <i class="fas fa-sign-out-alt"></i> Выйти
-                        </button>
-                    </div>
-                    <ul id="userList" class="user-list"></ul>
+            <div class="nav-tabs">
+                <div class="nav-tab active" data-tab="friends">Друзья</div>
+                <div class="nav-tab" data-tab="add-friend">Добавить</div>
+                <div class="nav-tab" data-tab="requests">Запросы</div>
+            </div>
+            
+            <div id="friendsPanel" class="panel-content">
+                <div class="search-box">
+                    <input type="text" id="searchFriend" placeholder="Поиск друга...">
                 </div>
-
-                <!-- Основной чат -->
-                <div class="chat-main">
-                    <div id="messagesContainer" class="messages-container">
-                        <!-- Сообщения будут здесь -->
+                <ul id="friendsList" class="friends-list"></ul>
+            </div>
+            
+            <div id="addFriendPanel" class="panel-content" style="display: none;">
+                <div class="search-box">
+                    <input type="text" id="searchUsername" placeholder="Введите имя пользователя">
+                    <button id="searchUserBtn" style="margin-top: 10px;">Найти</button>
+                </div>
+                <div id="searchResults" class="search-results"></div>
+            </div>
+            
+            <div id="requestsPanel" class="panel-content" style="display: none;">
+                <h3 style="padding: 20px;">Входящие запросы</h3>
+                <div id="friendRequests"></div>
+            </div>
+        </div>
+        
+        <!-- Правая часть - чат -->
+        <div class="content-panel">
+            <div id="emptyChat" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: #666;">
+                <h2>Выберите чат</h2>
+                <p>Выберите друга из списка слева, чтобы начать общение</p>
+            </div>
+            
+            <div id="chatContainer" style="display: none; flex-direction: column; height: 100%;">
+                <div class="chat-header">
+                    <img id="chatFriendAvatar" class="avatar" src="" alt="Avatar">
+                    <div>
+                        <div id="chatFriendName" style="font-weight: bold;"></div>
+                        <div id="chatFriendStatus" style="font-size: 12px; color: #666;">Онлайн</div>
                     </div>
-
-                    <form id="messageForm" class="message-form">
-                        <input type="text" id="messageInput" placeholder="Введите сообщение..." class="message-input" autocomplete="off">
-                        <button type="submit" class="send-button">
-                            <i class="fas fa-paper-plane"></i> Отправить
-                        </button>
-                    </form>
+                </div>
+                
+                <div id="chatMessages" class="chat-messages"></div>
+                
+                <div class="message-input">
+                    <input type="text" id="messageInput" placeholder="Введите сообщение..." autocomplete="off">
+                    <button id="sendMessageBtn">Отправить</button>
                 </div>
             </div>
+        </div>
+    </div>
 
-            <div class="status-bar">
-                <span id="statusText">Не подключено</span>
-                | Пользователь: <span id="currentUsername">-</span>
+    <!-- Модальное окно смены аватара -->
+    <div id="avatarModal" class="modal">
+        <div class="modal-content">
+            <h3>Смена аватара</h3>
+            <p>Введите URL изображения для аватара:</p>
+            <input type="text" id="avatarUrl" placeholder="https://example.com/avatar.jpg">
+            <p style="font-size: 12px; color: #666; margin-top: 10px;">
+                Совет: можно использовать <a href="https://ui-avatars.com" target="_blank">UI Avatars</a>
+            </p>
+            <div class="modal-actions">
+                <button class="secondary-btn" onclick="hideAvatarModal()">Отмена</button>
+                <button class="primary-btn" onclick="updateAvatar()">Сохранить</button>
             </div>
         </div>
     </div>
 
     <script src="/socket.io/socket.io.js"></script>
     <script src="script.js"></script>
-    <script>
-        function showLogin() {
-            document.getElementById('registerForm').style.display = 'none';
-            document.getElementById('loginForm').style.display = 'block';
-        }
-
-        function showRegister() {
-            document.getElementById('loginForm').style.display = 'none';
-            document.getElementById('registerForm').style.display = 'block';
-        }
-
-        // Для удобства тестирования
-        window.showLogin = showLogin;
-        window.showRegister = showRegister;
-    </script>
 </body>
 </html>
