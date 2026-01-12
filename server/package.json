@@ -1,14 +1,13 @@
 {
-  "name": "simplechat-2008",
+  "name": "simple-chat-2000",
   "version": "1.0.0",
-  "description": "Простой чат в стиле 2008 с друзьями и сохранением сообщений",
+  "description": "Простой чат в стиле 2000-х",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
     "express": "^4.18.2",
-    "socket.io": "^4.7.2",
-    "crypto": "^1.0.1"
+    "socket.io": "^4.7.2"
   }
 }
