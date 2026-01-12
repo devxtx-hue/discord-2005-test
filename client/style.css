@@ -560,4 +560,237 @@ body {
 
 .setting-title {
     font-weight: bold;
-    margin-bottom: 10px
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.switch {
+    position: relative;
+    display: inline-block;
+    width: 50px;
+    height: 24px;
+}
+
+.switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #ccc;
+    transition: .4s;
+    border-radius: 34px;
+}
+
+.slider:before {
+    position: absolute;
+    content: "";
+    height: 16px;
+    width: 16px;
+    left: 4px;
+    bottom: 4px;
+    background-color: white;
+    transition: .4s;
+    border-radius: 50%;
+}
+
+input:checked + .slider {
+    background-color: var(--primary-color);
+}
+
+input:checked + .slider:before {
+    transform: translateX(26px);
+}
+
+/* ===== ЦВЕТОВАЯ ПАЛИТРА ===== */
+.color-palette {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 10px;
+}
+
+.color-option {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    cursor: pointer;
+    border: 2px solid transparent;
+}
+
+.color-option:hover {
+    transform: scale(1.1);
+}
+
+.color-option.active {
+    border-color: #333;
+}
+
+/* ===== УВЕДОМЛЕНИЯ ===== */
+.notification {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    padding: 15px 20px;
+    background: white;
+    border-radius: 5px;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+    z-index: 3000;
+    animation: slideIn 0.3s ease;
+    border-left: 4px solid var(--primary-color);
+}
+
+.notification.success { border-left-color: #2ecc71; }
+.notification.error { border-left-color: #e74c3c; }
+.notification.info { border-left-color: #3498db; }
+
+@keyframes slideIn {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+/* ===== SCROLLBAR ===== */
+::-webkit-scrollbar {
+    width: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: #f1f1f1;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #888;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #555;
+}
+
+/* ===== АДАПТИВНОСТЬ ===== */
+@media (max-width: 768px) {
+    .container {
+        flex-direction: column;
+    }
+    
+    .sidebar {
+        width: 100%;
+        height: auto;
+    }
+    
+    .chat-area {
+        height: 70vh;
+    }
+}
+
+/* ===== ТЕМЫ ===== */
+body.theme-dark {
+    --bg-color: #1a1a1a;
+    --sidebar-bg: #2c3e50;
+    --chat-bg: #2d2d2d;
+    --text-color: #fff;
+    --border-color: #444;
+}
+
+body.theme-blue {
+    --primary-color: #3498db;
+    --secondary-color: #2980b9;
+}
+
+body.theme-green {
+    --primary-color: #2ecc71;
+    --secondary-color: #27ae60;
+}
+
+body.theme-purple {
+    --primary-color: #9b59b6;
+    --secondary-color: #8e44ad;
+}
+
+/* ===== АНИМАЦИИ ===== */
+@keyframes pulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+    100% { transform: scale(1); }
+}
+
+.pulse {
+    animation: pulse 2s infinite;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.fade-in {
+    animation: fadeIn 0.3s ease;
+}
+
+/* ===== БЕЙДЖИ ===== */
+.badges-container {
+    display: flex;
+    gap: 5px;
+    margin-top: 10px;
+}
+
+.badge {
+    padding: 2px 8px;
+    background: #3498db;
+    color: white;
+    border-radius: 10px;
+    font-size: 11px;
+    display: inline-block;
+}
+
+.badge.veteran { background: #e74c3c; }
+.badge.expert { background: #f39c12; }
+.badge.premium { background: #9b59b6; }
+.badge.moderator { background: #2ecc71; }
+
+/* ===== XP BAR ===== */
+.xp-bar {
+    height: 5px;
+    background: #eee;
+    border-radius: 3px;
+    margin-top: 5px;
+    overflow: hidden;
+}
+
+.xp-progress {
+    height: 100%;
+    background: linear-gradient(90deg, #3498db, #2ecc71);
+    width: 0%;
+    transition: width 0.3s ease;
+}
+
+/* ===== ВИДЖЕТЫ ===== */
+.widget {
+    background: white;
+    border-radius: 10px;
+    padding: 15px;
+    margin-bottom: 15px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+.widget-title {
+    font-size: 16px;
+    font-weight: bold;
+    margin-bottom: 10px;
+    color: var(--primary-color);
+}
